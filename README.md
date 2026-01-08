@@ -8,40 +8,53 @@ CFA Factory uses a multi-agent debate system (Professor vs Student) to deeply un
 
 ## Architecture
 
+```mermaid
+flowchart TD
+  A[PDFs: Official/Schweser] --> B[Chunker<br/>LLM or rule-based]
+  B --> C[chunks.jsonl]
+  C --> D[Index (ChromaDB)]
+  D --> E[Evidence Packet<br/>Reading-scoped]
+  E --> F{Pipeline Mode}
+
+  F -->|Debate| G[Router -> TA Outline -> Search -> Professor -> Student -> Synthesis -> Verifier]
+  F -->|Production| H[Router -> TA Outline -> Search -> Professor -> Student -> Synthesis -> Verifier -> Lecture Draft -> Dialogue Expander -> Strict Expander -> Translator -> Continuity]
+  F -->|Two-Phase| I[Outline Generator -> Scene Expander (loop) -> Translator]
 ```
-┌─────────────────────────────────────────────────────────────────────────┐
-│                           CFA Factory Pipeline                          │
-├─────────────────────────────────────────────────────────────────────────┤
-│                                                                         │
-│  PDF (Official/Schweser)                                                │
-│        │                                                                │
-│        ▼                                                                │
-│  ┌─────────┐    ┌─────────┐    ┌────────────────┐                       │
-│  │ Chunker │───▶│ Indexer │───▶│ Evidence Packet│                       │
-│  └─────────┘    └─────────┘    └───────┬────────┘                       │
-│                                        │                                 │
-│                                        ▼                                 │
-│  ┌─────────────────────────────────────────────────────────────────┐    │
-│  │                    Debate Pipeline (ADK)                        │    │
-│  │  ┌────────┐   ┌───────────┐   ┌─────────┐   ┌───────────┐       │    │
-│  │  │ Router │──▶│ Professor │──▶│ Student │──▶│ Synthesis │       │    │
-│  │  └────────┘   └───────────┘   └─────────┘   └───────────┘       │    │
-│  │                                                     │            │    │
-│  │                    ┌──────────────────────────────┐ │            │    │
-│  │                    │ Deep-Dive Round (Optional)   │◀┘            │    │
-│  │                    │ Professor₂ → Student₂ → Synth│             │    │
-│  │                    └──────────────────────────────┘             │    │
-│  │                                     │                            │    │
-│  │                                     ▼                            │    │
-│  │                              ┌──────────┐                        │    │
-│  │                              │ Verifier │                        │    │
-│  │                              └──────────┘                        │    │
-│  └─────────────────────────────────────────────────────────────────┘    │
-│                                        │                                 │
-│                                        ▼                                 │
-│                               state.json (Debate Output)                │
-└─────────────────────────────────────────────────────────────────────────┘
+
+```mermaid
+flowchart TD
+  A[PDF Page] --> B[PyMuPDF blocks + images + drawings]
+  B --> C{needs_vision?}
+  C -->|yes and llm_mode=vision-only/all| D[LLM chunker]
+  C -->|no or llm disabled| E[Rule-based chunker]
+  D --> F{LLM output ok?}
+  F -->|yes| G[chunks (reading_id, section_path, no_cut)]
+  F -->|no| E
+  E --> G
 ```
+
+```mermaid
+flowchart TD
+  A[chunks.jsonl] --> B[Chroma index (doc)]
+  B --> C[Evidence Packet (reading_id)]
+  B --> D{--cross-ref?}
+  D -->|yes| E[Chroma index (unified)]
+  E --> C
+```
+
+```mermaid
+flowchart TD
+  P[Production Pipeline Outputs] --> S1[state.json]
+  P --> S2[professor_lecture.json]
+  P --> S3[english_script.json]
+  P --> S4[video_script.json]
+  P --> S5[script_zh.txt]
+```
+
+Notes:
+- `--multi-round` inserts a deep-dive loop: Professor2 -> Student2 -> Synthesis2 before Verifier.
+- `--with-editor` uses the Production pipeline; `--skip-translate` stops at `english_script.json`.
+- Two-phase mode expands each scene sequentially (Outline -> Scene Expander loop -> Translator).
 
 ## Installation
 
