@@ -1,0 +1,7 @@
+# CFA Factory runtime defaults
+# Override with CLI flags or env vars if needed.
+min_claims: 80
+min_scenes: 90
+min_scene_words: 90
+smooth_zh: true
+smooth_window: 6
