@@ -11,7 +11,50 @@ CFA Factory uses a multi-agent debate system (Professor vs Student) to deeply un
 ### High-Level Flow
 
 ```
-PDF ──► chunk ──► index ──► evidence_packet ──► Debate ──► Script Generation ──► Output
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                              CFA Factory                                     │
+│                                                                              │
+│   ┌──────────────┐                                                           │
+│   │  CFA PDFs    │   Official L1 V1-V10 + Schweser B1-B4                     │
+│   │  (14 books)  │                                                           │
+│   └──────┬───────┘                                                           │
+│          │                                                                   │
+│          ▼                                                                   │
+│   ┌──────────────────────────────────────────────────────────────────────┐  │
+│   │                      PREPROCESSING                                    │  │
+│   │   PDF ──► PyMuPDF ──► LLM Chunker ──► ChromaDB ──► Evidence Packet   │  │
+│   │          (blocks)    (semantic)      (vectors)    (per reading)      │  │
+│   └──────────────────────────────────────┬───────────────────────────────┘  │
+│                                          │                                   │
+│                                          ▼                                   │
+│   ┌──────────────────────────────────────────────────────────────────────┐  │
+│   │                         DEBATE PHASE                                  │  │
+│   │                                                                       │  │
+│   │   ┌─────────┐    ┌───────────┐    ┌─────────┐    ┌──────────┐        │  │
+│   │   │Professor│───►│  Student  │───►│Synthesis│───►│ Verifier │        │  │
+│   │   │(claims) │◄───│(challenge)│    │(refine) │    │ (audit)  │        │  │
+│   │   └─────────┘    └───────────┘    └─────────┘    └──────────┘        │  │
+│   │       Thesis    ◄──► Antithesis    = Synthesis     + Verification     │  │
+│   │                                                                       │  │
+│   └──────────────────────────────────────┬───────────────────────────────┘  │
+│                                          │                                   │
+│                                          ▼                                   │
+│   ┌──────────────────────────────────────────────────────────────────────┐  │
+│   │                      SCRIPT GENERATION                                │  │
+│   │                                                                       │  │
+│   │   Verified Claims ──► Lecture Draft ──► Dialogue ──► Translate       │  │
+│   │                       (Gemini Pro)     (expand)     (DeepSeek)       │  │
+│   │                                                                       │  │
+│   └──────────────────────────────────────┬───────────────────────────────┘  │
+│                                          │                                   │
+│                                          ▼                                   │
+│   ┌──────────────────────────────────────────────────────────────────────┐  │
+│   │                          OUTPUT                                       │  │
+│   │   video_script.json   script_zh.txt   english_script.json            │  │
+│   │   (structured)        (readable)      (intermediate)                 │  │
+│   └──────────────────────────────────────────────────────────────────────┘  │
+│                                                                              │
+└─────────────────────────────────────────────────────────────────────────────┘
 ```
 
 ### Debate Pipeline (Claim Generation and Verification)
