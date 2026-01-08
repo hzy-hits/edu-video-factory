@@ -10,35 +10,35 @@ CFA Factory uses a multi-agent debate system (Professor vs Student) to deeply un
 
 ```mermaid
 flowchart TD
-  A[PDFs: Official/Schweser] --> B[Chunker<br/>LLM or rule-based]
+  A[PDFs Official Schweser] --> B[Chunker LLM or rule-based]
   B --> C[chunks.jsonl]
-  C --> D[Index (ChromaDB)]
-  D --> E[Evidence Packet<br/>Reading-scoped]
+  C --> D[ChromaDB Index]
+  D --> E[Evidence Packet Reading scoped]
   E --> F{Pipeline Mode}
 
-  F -->|Debate| G[Router -> TA Outline -> Search -> Professor -> Student -> Synthesis -> Verifier]
-  F -->|Production| H[Router -> TA Outline -> Search -> Professor -> Student -> Synthesis -> Verifier -> Lecture Draft -> Dialogue Expander -> Strict Expander -> Translator -> Continuity]
-  F -->|Two-Phase| I[Outline Generator -> Scene Expander (loop) -> Translator]
+  F -->|Debate| G[Router TA Outline Search Professor Student Synthesis Verifier]
+  F -->|Production| H[Router TA Outline Search Professor Student Synthesis Verifier Lecture Draft Dialogue Expander Strict Expander Translator Continuity]
+  F -->|Two-Phase| I[Outline Generator Scene Expander loop Translator]
 ```
 
 ```mermaid
 flowchart TD
   A[PDF Page] --> B[PyMuPDF blocks + images + drawings]
   B --> C{needs_vision?}
-  C -->|yes and llm_mode=vision-only/all| D[LLM chunker]
+  C -->|yes and llm_mode vision-only or all| D[LLM chunker]
   C -->|no or llm disabled| E[Rule-based chunker]
   D --> F{LLM output ok?}
-  F -->|yes| G[chunks (reading_id, section_path, no_cut)]
+  F -->|yes| G[chunks reading_id section_path no_cut]
   F -->|no| E
   E --> G
 ```
 
 ```mermaid
 flowchart TD
-  A[chunks.jsonl] --> B[Chroma index (doc)]
-  B --> C[Evidence Packet (reading_id)]
+  A[chunks.jsonl] --> B[Chroma index doc]
+  B --> C[Evidence Packet reading_id]
   B --> D{--cross-ref?}
-  D -->|yes| E[Chroma index (unified)]
+  D -->|yes| E[Chroma index unified]
   E --> C
 ```
 
