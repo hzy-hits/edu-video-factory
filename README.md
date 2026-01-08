@@ -8,43 +8,90 @@ CFA Factory uses a multi-agent debate system (Professor vs Student) to deeply un
 
 ## Architecture
 
-### Data Flow
+### High-Level Flow
 
 ```
-PDF (Official/Schweser)
-        │
-        ▼
-┌───────────────────────────────────────────────────────────────┐
-│                     Preprocessing                              │
-│  chunk ──► index ──► evidence_packet                          │
-│  (PyMuPDF)  (ChromaDB)  (retrieval)                           │
-└───────────────────────────────────────────────────────────────┘
-        │
-        ▼
-┌───────────────────────────────────────────────────────────────┐
-│                     Debate Pipeline                            │
-│                                                                │
-│  Router ─► TA Outline ─► Search ─► Professor ─► Student       │
-│                                        │           │          │
-│                                        ▼           ▼          │
-│                                    Synthesis ◄────────        │
-│                                        │                      │
-│                                        ▼                      │
-│                                    Verifier                   │
-│                                                                │
-└───────────────────────────────────────────────────────────────┘
-        │
-        ▼
-┌───────────────────────────────────────────────────────────────┐
-│                   Script Generation                            │
-│                                                                │
-│  Lecture Draft ─► Dialogue Expander ─► Translator ─► Output   │
-│  (Gemini Pro)    (Gemini Pro)          (DeepSeek)             │
-│                                                                │
-└───────────────────────────────────────────────────────────────┘
-        │
-        ▼
-   video_script.json / script_zh.txt
+PDF ──► chunk ──► index ──► evidence_packet ──► Debate ──► Script Generation ──► Output
+```
+
+### Debate Pipeline (Claim Generation and Verification)
+
+```
+                              evidence_packet
+                                    │
+                                    ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  1. Router                                                                   │
+│     Input:  reading_summary, evidence_packet                                │
+│     Output: lesson_plan (mode, required_beats, retrieval_queries)           │
+├─────────────────────────────────────────────────────────────────────────────┤
+│  2. TA Outline                                                               │
+│     Input:  lesson_plan, evidence_packet                                    │
+│     Output: lecture_outline (sections, key_points, key_questions)           │
+├─────────────────────────────────────────────────────────────────────────────┤
+│  3. Search Agent                                                             │
+│     Input:  reading_id, lesson_plan.retrieval_queries                       │
+│     Output: search_context (external sources, URLs)                         │
+├─────────────────────────────────────────────────────────────────────────────┤
+│  4. Professor                                                                │
+│     Input:  lecture_outline, evidence_packet, search_context                │
+│     Output: professor_claims (claim_id, statement, citations, derivation)   │
+├─────────────────────────────────────────────────────────────────────────────┤
+│  5. Student                                                                  │
+│     Input:  professor_claims, evidence_packet, search_context               │
+│     Output: student_challenges (target_claim_id, challenge, counter-example)│
+├─────────────────────────────────────────────────────────────────────────────┤
+│  6. Synthesis                                                                │
+│     Input:  professor_claims, student_challenges                            │
+│     Output: synthesis_claims (refined claims with boundary conditions)      │
+├─────────────────────────────────────────────────────────────────────────────┤
+│  7. Verifier                                                                 │
+│     Input:  synthesis_claims, evidence_packet                               │
+│     Output: verifier_report (verdict: PASS/WEAK/HALLUCINATION per claim)    │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+### Script Generation (English Draft to Chinese Video Script)
+
+```
+                           synthesis_claims + verifier_report
+                                         │
+                                         ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  8. Lecture Drafter (Gemini Pro)                                             │
+│     Input:  synthesis_claims (PASS/WEAK only), lecture_outline              │
+│     Output: professor_lecture                                               │
+│             - Scene-by-scene lecture draft (English)                        │
+│             - Professor monologue with occasional Student questions         │
+│             - Each scene: beat, speaker, display_en, spoken_en, citations   │
+├─────────────────────────────────────────────────────────────────────────────┤
+│  9. Dialogue Expander (Gemini Pro)                                           │
+│     Input:  professor_lecture, student_challenges                           │
+│     Output: english_script                                                  │
+│             - Expand into multi-turn dialogue (3-5 turns per claim)         │
+│             - Professor explains → Student challenges → Professor clarifies │
+│             - Minimum 90 words per scene                                    │
+├─────────────────────────────────────────────────────────────────────────────┤
+│  10. Strict Expander (Gemini Pro)                                            │
+│      Input:  english_script                                                 │
+│      Output: english_script (enforced minimum length)                       │
+│              - Ensure every scene meets min_scene_words threshold           │
+├─────────────────────────────────────────────────────────────────────────────┤
+│  11. Translator (DeepSeek, per-scene)                                        │
+│      Input:  english_script                                                 │
+│      Output: video_script (Chinese)                                         │
+│              - Per-scene translation (avoids JSON truncation)               │
+│              - Context-aware: uses prev/next scene for coherence            │
+│              - Optional smoothing pass for natural spoken Chinese           │
+├─────────────────────────────────────────────────────────────────────────────┤
+│  12. Continuity Gate (Gemini Flash)                                          │
+│      Input:  video_script, lesson_plan                                      │
+│      Output: continuity_report (issues, passed: true/false)                 │
+│              - Check beat coverage, glossary consistency, transitions       │
+└─────────────────────────────────────────────────────────────────────────────┘
+                                         │
+                                         ▼
+                    video_script.json + script_zh.txt
 ```
 
 ### Agent Roles
