@@ -1,113 +1,107 @@
-# CFA Factory 🎓
+# CFA Factory
 
-**AI-Powered CFA Study Video Factory** - Transform CFA curriculum into engaging educational videos using multi-agent debate.
+AI-Powered CFA Study Video Factory - Transform CFA curriculum into educational video scripts using multi-agent debate.
 
 ## Overview
 
-CFA Factory uses a multi-agent debate system (Professor vs Student) to deeply understand CFA materials and generate high-quality educational content. The system is built on Google's Agent Development Kit (ADK).
+CFA Factory uses a multi-agent debate system (Professor vs Student) to deeply understand CFA materials and generate educational content. The system is built on Google's Agent Development Kit (ADK).
 
 ## Architecture
 
-```mermaid
-flowchart TD
-  A[PDFs] --> B[Chunker]
-  B --> C[chunks.jsonl]
-  C --> D[ChromaDB index]
-  D --> E[Evidence Packet]
-  E --> F{Pipeline mode}
+### Data Flow
 
-  F --> D1
-  F --> P1
-  F --> T1
-
-  subgraph Debate["Debate pipeline"]
-    D1[Router] --> D2[TA Outline] --> D3[Search] --> D4[Professor] --> D5[Student] --> D6[Synthesis] --> D7[Verifier]
-  end
-
-  subgraph Production["Production pipeline"]
-    P1[Router] --> P2[TA Outline] --> P3[Search] --> P4[Professor] --> P5[Student] --> P6[Synthesis] --> P7[Verifier] --> P8[Lecture Draft] --> P9[Dialogue Expander] --> P10[Strict Expander] --> P11[Translator] --> P12[Continuity]
-  end
-
-  subgraph TwoPhase["Two-phase pipeline"]
-    T1[Outline Generator] --> T2[Scene Expander loop] --> T3[Translator]
-  end
+```
+PDF (Official/Schweser)
+        │
+        ▼
+┌───────────────────────────────────────────────────────────────┐
+│                     Preprocessing                              │
+│  chunk ──► index ──► evidence_packet                          │
+│  (PyMuPDF)  (ChromaDB)  (retrieval)                           │
+└───────────────────────────────────────────────────────────────┘
+        │
+        ▼
+┌───────────────────────────────────────────────────────────────┐
+│                     Debate Pipeline                            │
+│                                                                │
+│  Router ─► TA Outline ─► Search ─► Professor ─► Student       │
+│                                        │           │          │
+│                                        ▼           ▼          │
+│                                    Synthesis ◄────────        │
+│                                        │                      │
+│                                        ▼                      │
+│                                    Verifier                   │
+│                                                                │
+└───────────────────────────────────────────────────────────────┘
+        │
+        ▼
+┌───────────────────────────────────────────────────────────────┐
+│                   Script Generation                            │
+│                                                                │
+│  Lecture Draft ─► Dialogue Expander ─► Translator ─► Output   │
+│  (Gemini Pro)    (Gemini Pro)          (DeepSeek)             │
+│                                                                │
+└───────────────────────────────────────────────────────────────┘
+        │
+        ▼
+   video_script.json / script_zh.txt
 ```
 
-```mermaid
-flowchart TD
-  A[PDF Page] --> B[PyMuPDF blocks + images + drawings]
-  B --> C{needs_vision?}
-  C -->|yes and llm_mode vision-only or all| D[LLM chunker]
-  C -->|no or llm disabled| E[Rule-based chunker]
-  D --> F{LLM output ok?}
-  F -->|yes| G[chunks reading_id section_path no_cut]
-  F -->|no| E
-  E --> G
-```
+### Agent Roles
 
-```mermaid
-flowchart TD
-  A[chunks.jsonl] --> B[Chroma index doc]
-  B --> C[Evidence Packet reading_id]
-  B --> D{--cross-ref?}
-  D -->|yes| E[Chroma index unified]
-  E --> C
-```
+| Agent | Model | Role |
+|-------|-------|------|
+| Router | Gemini Flash | Classify reading into pedagogical mode |
+| TA Outline | Gemini Flash | Build lecture outline with key questions |
+| Search | Gemini Flash | Web search for real-world examples |
+| Professor | Gemini Pro | Generate first-principles claims with citations |
+| Student | Gemini Flash | Challenge claims with counter-examples |
+| Synthesis | Gemini Pro | Reconcile claims and challenges |
+| Verifier | Gemini Flash | Audit claims against evidence |
+| Lecture Drafter | Gemini Pro | Convert claims to dialogue draft |
+| Dialogue Expander | Gemini Pro | Expand draft into multi-turn dialogue |
+| Translator | DeepSeek | Translate English script to Chinese |
 
-```mermaid
-flowchart TD
-  P[Production Pipeline Outputs] --> S1[state.json]
-  P --> S2[professor_lecture.json]
-  P --> S3[english_script.json]
-  P --> S4[video_script.json]
-  P --> S5[script_zh.txt]
-```
+### Pipeline Modes
 
-Notes:
-- `--multi-round` inserts a deep-dive loop: Professor2 -> Student2 -> Synthesis2 before Verifier.
-- `--with-editor` uses the Production pipeline; `--skip-translate` stops at `english_script.json`.
-- Two-phase mode expands each scene sequentially (Outline -> Scene Expander loop -> Translator).
+| Mode | Flag | Description |
+|------|------|-------------|
+| Debate only | (default) | Router → Professor → Student → Synthesis → Verifier |
+| Multi-round | `--multi-round` | Adds deep-dive round before Verifier |
+| Production | `--with-editor` | Full pipeline with script generation |
+| English-only | `--skip-translate` | Production without translation step |
+| Two-phase | `--two-phase` | Outline → Scene expansion loop → Translation |
 
 ## Installation
 
 ```bash
-# Clone the repository
 git clone https://github.com/yourusername/cfa_factory.git
 cd cfa_factory
-
-# Install with uv (recommended)
 uv sync
 
-# Set up environment variables
 cp .env.example .env
 # Edit .env with your API keys:
 # - GEMINI_API_KEY (required)
-# - DEEPSEEK_API_KEY (optional, for Editor)
+# - DEEPSEEK_API_KEY (optional, for translation)
 ```
 
 ## Quick Start
 
 ```bash
-# Step 1: Chunk the PDF into text segments (one time per book)
+# Step 1: Chunk the PDF (one time per book)
 uv run cfa chunk --doc OFFICIAL_2026_L1_V9 --llm
 
-# Step 2: Build the vector index (one time per book)
+# Step 2: Build vector index (one time per book)
 uv run cfa index --doc OFFICIAL_2026_L1_V9
 
-# Optional: build unified cross-book index
-uv run cfa index-all
-
-# Step 3: Run the pipeline for a reading (reading_id is numeric, e.g. 1)
+# Step 3: Run pipeline for a reading
 uv run cfa run --doc OFFICIAL_2026_L1_V9 --reading 1 --with-editor --cross-ref --prep
 
-# Optional: English-only run (skip translation)
-uv run cfa run --doc OFFICIAL_2026_L1_V9 --reading 1 --with-editor --cross-ref --prep --skip-translate
+# English-only (skip translation)
+uv run cfa run --doc OFFICIAL_2026_L1_V9 --reading 1 --with-editor --prep --skip-translate
 
-# Optional: Translate an existing english_script.json (per-scene, stable)
+# Translate existing English script
 uv run cfa translate --doc OFFICIAL_2026_L1_V9 --reading 1
-
-# Optional: Disable post-translation smoothing
-uv run cfa translate --doc OFFICIAL_2026_L1_V9 --reading 1 --no-smooth-zh
 ```
 
 ## CLI Commands
@@ -116,18 +110,17 @@ uv run cfa translate --doc OFFICIAL_2026_L1_V9 --reading 1 --no-smooth-zh
 |---------|-------------|
 | `cfa chunk --doc DOC_ID` | Extract text chunks from PDF |
 | `cfa index --doc DOC_ID` | Build ChromaDB vector index |
+| `cfa index-all` | Build unified cross-book index |
 | `cfa packet --doc DOC_ID --reading 1` | Generate evidence packet |
-| `cfa run --doc DOC_ID --reading 1 --with-editor` | Run pipeline with script generation |
-| `cfa run --doc DOC_ID --reading 1 --with-editor --skip-translate` | English-only pipeline |
-| `cfa translate --doc DOC_ID --reading 1` | Translate existing English script (per-scene + smoothing) |
-| `cfa run --doc DOC_ID --reading 1 --multi-round` | Run multi-round debate (2-4 hour content) |
-| `cfa vision extract --doc DOC_ID --reading R1` | Extract figures/formulas with Gemini Vision |
+| `cfa run --doc DOC_ID --reading 1 --with-editor` | Run full pipeline |
+| `cfa translate --doc DOC_ID --reading 1` | Translate existing English script |
+| `cfa vision extract --doc DOC_ID --reading 1` | Extract figures/formulas |
 
 ## Document IDs
 
 ### Official CFA Materials
-| doc_id | Title |
-|--------|-------|
+| doc_id | Volume |
+|--------|--------|
 | `OFFICIAL_2026_L1_V1` | Quantitative Methods |
 | `OFFICIAL_2026_L1_V2` | Economics |
 | `OFFICIAL_2026_L1_V3` | Corporate Issuers |
@@ -137,11 +130,11 @@ uv run cfa translate --doc OFFICIAL_2026_L1_V9 --reading 1 --no-smooth-zh
 | `OFFICIAL_2026_L1_V7` | Derivatives |
 | `OFFICIAL_2026_L1_V8` | Alternative Investments |
 | `OFFICIAL_2026_L1_V9` | Portfolio Management |
-| `OFFICIAL_2026_L1_V10` | Ethical and Professional Standards |
+| `OFFICIAL_2026_L1_V10` | Ethics |
 
 ### Schweser Notes
-| doc_id | Title |
-|--------|-------|
+| doc_id | Content |
+|--------|---------|
 | `SCHWESER_2026_L1_B1` | Quant, Economics, Corporate Issuers |
 | `SCHWESER_2026_L1_B2` | FSA, Equity |
 | `SCHWESER_2026_L1_B3` | Fixed Income, Derivatives |
@@ -149,46 +142,23 @@ uv run cfa translate --doc OFFICIAL_2026_L1_V9 --reading 1 --no-smooth-zh
 
 ## Batch Processing
 
-Process all documents at once:
-
-```bash
-# Or manually:
-for doc in OFFICIAL_2026_L1_V1 OFFICIAL_2026_L1_V3 ...; do
-    uv run cfa chunk --doc $doc
-    uv run cfa index --doc $doc
-    # Process each reading...
-done
-```
-
-Run a whole book (all readings) with the helper script:
+Process an entire book:
 
 ```bash
 ./scripts/run_book.sh OFFICIAL_2026_L1_V3 --prep
 ```
 
-Parallel version (set DOC/JOBS/FLAGS):
+Parallel execution:
 
 ```bash
 DOC=OFFICIAL_2026_L1_V3 JOBS=3 ./scripts/run_book_parallel.sh
 ```
 
-Parallel translation for a whole book:
+English-first workflow (generate English, then translate in parallel):
 
 ```bash
+DOC=OFFICIAL_2026_L1_V3 JOBS=3 FLAGS="--with-editor --prep --skip-translate" ./scripts/run_book_parallel.sh
 DOC=OFFICIAL_2026_L1_V3 JOBS=3 ./scripts/translate_book_parallel.sh
-```
-
-One-shot workflow (English-first, then parallel translation):
-
-```bash
-DOC=OFFICIAL_2026_L1_V3 JOBS=3 FLAGS="--with-editor --cross-ref --prep --skip-translate" ./scripts/run_book_parallel.sh
-DOC=OFFICIAL_2026_L1_V3 JOBS=3 FLAGS="--parallel 4" ./scripts/translate_book_parallel.sh
-```
-
-Resume missing readings + translate (skips those already done):
-
-```bash
-./scripts/run_book_resume_translate.sh OFFICIAL_2026_L1_V3 -j 3
 ```
 
 ## Output Structure
@@ -196,79 +166,65 @@ Resume missing readings + translate (skips those already done):
 ```
 output/
 ├── index/
-│   ├── chunks/                # JSONL chunks
+│   ├── chunks/                     # Text chunks (JSONL)
 │   │   └── OFFICIAL_2026_L1_V9.jsonl
-│   └── chroma/                # Vector indices
+│   └── chroma/                     # Vector indices
 │       ├── OFFICIAL_2026_L1_V9/
-│       └── unified/           # Cross-book index
-├── runs/                      # Debate outputs
+│       └── unified/                # Cross-book index
+├── runs/
 │   └── OFFICIAL_2026_L1_V9/
-│       └── 1/
-│           └── 20260105T001101/
+│       └── 1/                      # reading_id
+│           └── 20260105T001101/    # run timestamp
 │               ├── evidence_packet.json
 │               ├── state.json
 │               ├── professor_lecture.json
 │               ├── english_script.json
 │               ├── video_script.json
 │               └── script_zh.txt
-└── vision_assets/             # Extracted figures/formulas
+└── vision_assets/                  # Extracted figures/formulas
 ```
-
-## Multi-Round Debate (for 2-4 Hour Videos)
-
-Single-round debate generates core claims. For full video coverage:
-
-```bash
-# Enable multi-round mode
-uv run cfa run --doc OFFICIAL_2026_L1_V9 --reading 1 --multi-round
-```
-
-This runs:
-- **Round 1:** Core first-principles claims
-- **Round 2:** Exam traps, edge cases, misconceptions
-- **Verification:** All claims audited against evidence
-
-Expected output: ~15-20 claims per reading → suitable for 40+ minute video segment.
 
 ## Philosophical Lenses
 
-The debate uses explicit philosophical frameworks:
+The debate uses explicit epistemological frameworks:
 
-**Professor:**
-- First Principles (Aristotle)
-- Dialectical Synthesis (Hegel)
+**Professor (Thesis):**
+- First Principles derivation
+- Dialectical Synthesis
 - Systems Dynamics
-- Signaling (Spence)
+- Signaling Theory
 
-**Student:**
+**Student (Antithesis):**
 - Popperian Falsification
-- Mandelbrotian Chaos (Fat Tails)
-- Munger Inversion
-- Taleb Fragility Probe
-
-## Tech Stack
-
-- **Framework:** Google ADK (Agent Development Kit)
-- **Models:** Gemini 3 Flash/Pro
-- **Vector Store:** ChromaDB
-- **Embeddings:** text-embedding-004
-- **PDF:** PyMuPDF
+- Fat Tail Analysis
+- Inversion Testing
+- Fragility Probing
 
 ## Configuration
 
-Defaults are read from `config/cfa.yaml`:
+Defaults in `config/cfa.yaml`:
 
 ```yaml
 min_claims: 80
 min_scenes: 90
 min_scene_words: 90
+smooth_zh: true
+smooth_window: 6
 ```
 
-Override config file path with:
+Override with environment variable:
 
 ```bash
-export CFA_CONFIG=/path/to/your.yaml
+export CFA_CONFIG=/path/to/custom.yaml
 ```
+
+## Tech Stack
+
+- Framework: Google ADK
+- Models: Gemini 3 Pro/Flash, DeepSeek Chat
+- Vector Store: ChromaDB
+- Embeddings: text-embedding-004
+- PDF: PyMuPDF
 
 ## License
 
