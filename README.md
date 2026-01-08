@@ -10,15 +10,27 @@ CFA Factory uses a multi-agent debate system (Professor vs Student) to deeply un
 
 ```mermaid
 flowchart TD
-  A[PDFs Official Schweser] --> B[Chunker LLM or rule-based]
+  A[PDFs] --> B[Chunker]
   B --> C[chunks.jsonl]
-  C --> D[ChromaDB Index]
-  D --> E[Evidence Packet Reading scoped]
-  E --> F{Pipeline Mode}
+  C --> D[ChromaDB index]
+  D --> E[Evidence Packet]
+  E --> F{Pipeline mode}
 
-  F -->|Debate| G[Router TA Outline Search Professor Student Synthesis Verifier]
-  F -->|Production| H[Router TA Outline Search Professor Student Synthesis Verifier Lecture Draft Dialogue Expander Strict Expander Translator Continuity]
-  F -->|Two-Phase| I[Outline Generator Scene Expander loop Translator]
+  F --> D1
+  F --> P1
+  F --> T1
+
+  subgraph Debate["Debate pipeline"]
+    D1[Router] --> D2[TA Outline] --> D3[Search] --> D4[Professor] --> D5[Student] --> D6[Synthesis] --> D7[Verifier]
+  end
+
+  subgraph Production["Production pipeline"]
+    P1[Router] --> P2[TA Outline] --> P3[Search] --> P4[Professor] --> P5[Student] --> P6[Synthesis] --> P7[Verifier] --> P8[Lecture Draft] --> P9[Dialogue Expander] --> P10[Strict Expander] --> P11[Translator] --> P12[Continuity]
+  end
+
+  subgraph TwoPhase["Two-phase pipeline"]
+    T1[Outline Generator] --> T2[Scene Expander loop] --> T3[Translator]
+  end
 ```
 
 ```mermaid
